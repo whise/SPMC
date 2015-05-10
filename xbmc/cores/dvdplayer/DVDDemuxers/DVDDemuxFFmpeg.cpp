@@ -723,6 +723,7 @@ DemuxPacket* CDVDDemuxFFmpeg::Read()
       else
         CLog::Log(LOGERROR, "CDVDDemuxFFmpeg::Read() returned invalid packet and eof reached");
 
+      CLog::Log(LOGDEBUG, "CDVDDemuxFFmpeg::Read() >>> MVC packet: 0x%x; idx: %d, cnt: %d", m_iMVClastid, -1, m_iMVCnb);
       m_pkt.result = -1;
       av_free_packet(&m_pkt.pkt);
     }
@@ -755,6 +756,18 @@ DemuxPacket* CDVDDemuxFFmpeg::Read()
       else
         bReturnEmpty = true;
 
+      if (m_bMVC && (stream->id == 0x1011 || stream->id == 0x1012))
+      {
+        if (stream->id != m_iMVClastid)
+        {
+          if (m_iMVClastid != -1)
+            CLog::Log(LOGDEBUG, "CDVDDemuxFFmpeg::Read() >>> MVC packet: 0x%x; idx: %d, cnt: %d", m_iMVClastid, m_pkt.pkt.stream_index, m_iMVCnb);
+          m_iMVClastid = stream->id;
+          m_iMVCnb = 0;
+        }
+        m_iMVCnb++;
+      }
+
       if (pPacket)
       {
         // lavf sometimes bugs out and gives 0 dts/pts instead of no dts/pts
@@ -764,18 +777,6 @@ DemuxPacket* CDVDDemuxFFmpeg::Read()
           m_pkt.pkt.dts = AV_NOPTS_VALUE;
         if(m_pkt.pkt.pts == 0)
           m_pkt.pkt.pts = AV_NOPTS_VALUE;
-
-        if (m_bMVC)
-        {
-          CLog::Log(LOGDEBUG, "CDVDDemuxFFmpeg::Read() MVC packet: 0x%x; pts: %lld dts: %lld", m_iMVClastid, m_pkt.pkt.pts, m_pkt.pkt.dts);
-          if (stream->id != m_iMVClastid)
-          {
-            if (m_iMVClastid != -1)
-              CLog::Log(LOGDEBUG, "CDVDDemuxFFmpeg::Read() >>> MVC packet: 0x%x; cnt: %d", m_iMVClastid, m_iMVCnb);
-            m_iMVClastid = stream->id;
-            m_iMVCnb = 0;
-          }
-        }
 
         if(m_bMatroska && stream->codec && stream->codec->codec_type == AVMEDIA_TYPE_VIDEO)
         { // matroska can store different timestamps
@@ -1185,15 +1186,10 @@ CDemuxStream* CDVDDemuxFFmpeg::AddStream(int iId)
           st->iFpsScale = 0;
         }
 
-        if (pStream->codec->codec_id == AV_CODEC_ID_H264 && pStream->id == 0x1102)
-        {
-          // right-eye of a BD3D ssif; mark file as MVC
-          m_bMVC = true;
-        }
         if (m_bMVC)
         {
           // Mark all streams as MVC
-          pStream->codec->codec_tag = AV_CODEC_ID_H264MVC;
+          //pStream->codec->codec_tag = AV_CODEC_ID_H264MVC;
         }
 
         st->iWidth = pStream->codec->width;
@@ -1235,6 +1231,12 @@ CDemuxStream* CDVDDemuxFFmpeg::AddStream(int iId)
       {
         stream = new CDemuxStream();
         stream->type = STREAM_DATA;
+        if (pStream->id == 0x1012)
+        {
+          // right-eye of a BD3D ssif; mark file as MVC
+          m_bMVC = true;
+          pStream->need_parsing = AVSTREAM_PARSE_NONE;
+        }
         break;
       }
     case AVMEDIA_TYPE_SUBTITLE:
