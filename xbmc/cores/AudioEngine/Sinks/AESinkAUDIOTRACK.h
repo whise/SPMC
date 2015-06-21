@@ -46,6 +46,7 @@ public:
   virtual unsigned int AddPackets      (uint8_t **data, unsigned int frames, unsigned int offset);
   virtual void         Drain           ();
   virtual bool         HasVolume       ();
+  virtual bool         WantsIEC61937   (AEDataFormat format);
   static void          EnumerateDevicesEx(AEDeviceInfoList &list, bool force = false);
 
 protected:
